@@ -37,6 +37,39 @@ cd frontend && npm install && npm run dev                              # http://
 | Frontend types / build | `npm run typecheck && npm run build` |
 | Regenerate API types | `npm run gen:api` (backend must be running) |
 
+## Database
+
+Set `DATABASE_URL` in `.env` to any Postgres URL, pasted as the provider gives it (Supabase: the **Session pooler**
+string; Neon and local work too). The backend switches it to the async driver and enables SSL for remote hosts.
+
+```bash
+cd backend
+uv run alembic upgrade head        # create/upgrade tables (the Docker image does this on start)
+```
+
+No database handy? `PERSISTENCE_BACKEND=memory` runs everything in process (data is lost on restart).
+
+Tests: `uv run pytest` always runs against the in-memory backend. Set `TEST_DATABASE_URL` to run the API and gateway
+tests a second time against real Postgres, inside a throwaway schema built by the real migration and dropped
+afterwards, so existing tables are never touched. CI does this with a Postgres service container.
+
+## REST API (`/api/v1`, OpenAPI at `/api/docs`)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/transcripts` | Typed note (`engine=manual`); optional `Idempotency-Key` |
+| GET | `/transcripts?q=&engine=&from=&to=&cursor=&limit=` | Newest first, 20 per page, keyset cursor, full-text search |
+| GET | `/transcripts/{id}` | Detail with segments and per-word language tags; `ETag` = version |
+| PATCH | `/transcripts/{id}` | Rename; needs `If-Match` (428 without, 412 if stale) |
+| PATCH | `/transcripts/{id}/segments/{seq}` | Edit text; sets `edited`, recomputes tags, `full_text`, `hindi_ratio` |
+| DELETE | `/transcripts/{id}` | Soft delete; `?hard=true` deletes permanently |
+| POST | `/transcripts/{id}:restore` | Undo a soft delete |
+| GET | `/transcripts/{id}/export` | Plain-text download |
+
+Errors are RFC 9457 Problem Details with a stable `code` (e.g. `VERSION_CONFLICT`, `TRANSCRIPT_NOT_FOUND`).
+Recordings are saved by the realtime gateway: each final is written before it is shown, and a dropped connection
+resumes the same transcript with numbering continued.
+
 ## Live transcription
 
 Open http://localhost:3000/record, pick an output script and press **Start recording**.

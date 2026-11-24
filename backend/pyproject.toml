@@ -109,3 +109,125 @@ source_modules = [
     "hinglish.usage.application",
 ]
 forbidden_modules = ["hinglish.bootstrap"]
+
+# Rule 5: a context may use another context only through its `api` facade module.
+
+[[tool.importlinter.contracts]]
+name = "transcription uses other contexts only via their api facade"
+type = "forbidden"
+source_modules = ["hinglish.transcription"]
+forbidden_modules = [
+    "hinglish.transcripts.domain",
+    "hinglish.transcripts.application",
+    "hinglish.transcripts.infrastructure",
+    "hinglish.transcripts.interface",
+    "hinglish.linguistics.domain",
+    "hinglish.linguistics.application",
+    "hinglish.linguistics.infrastructure",
+    "hinglish.linguistics.interface",
+    "hinglish.speech.domain",
+    "hinglish.speech.application",
+    "hinglish.speech.infrastructure",
+    "hinglish.speech.interface",
+    "hinglish.usage.domain",
+    "hinglish.usage.application",
+    "hinglish.usage.infrastructure",
+    "hinglish.usage.interface",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "transcripts uses other contexts only via their api facade"
+type = "forbidden"
+source_modules = ["hinglish.transcripts"]
+forbidden_modules = [
+    "hinglish.transcription.domain",
+    "hinglish.transcription.application",
+    "hinglish.transcription.infrastructure",
+    "hinglish.transcription.interface",
+    "hinglish.linguistics.domain",
+    "hinglish.linguistics.application",
+    "hinglish.linguistics.infrastructure",
+    "hinglish.linguistics.interface",
+    "hinglish.speech.domain",
+    "hinglish.speech.application",
+    "hinglish.speech.infrastructure",
+    "hinglish.speech.interface",
+    "hinglish.usage.domain",
+    "hinglish.usage.application",
+    "hinglish.usage.infrastructure",
+    "hinglish.usage.interface",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "linguistics uses other contexts only via their api facade"
+type = "forbidden"
+source_modules = ["hinglish.linguistics"]
+forbidden_modules = [
+    "hinglish.transcription.domain",
+    "hinglish.transcription.application",
+    "hinglish.transcription.infrastructure",
+    "hinglish.transcription.interface",
+    "hinglish.transcripts.domain",
+    "hinglish.transcripts.application",
+    "hinglish.transcripts.infrastructure",
+    "hinglish.transcripts.interface",
+    "hinglish.speech.domain",
+    "hinglish.speech.application",
+    "hinglish.speech.infrastructure",
+    "hinglish.speech.interface",
+    "hinglish.usage.domain",
+    "hinglish.usage.application",
+    "hinglish.usage.infrastructure",
+    "hinglish.usage.interface",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "speech uses other contexts only via their api facade"
+type = "forbidden"
+source_modules = ["hinglish.speech"]
+forbidden_modules = [
+    "hinglish.transcription.domain",
+    "hinglish.transcription.application",
+    "hinglish.transcription.infrastructure",
+    "hinglish.transcription.interface",
+    "hinglish.transcripts.domain",
+    "hinglish.transcripts.application",
+    "hinglish.transcripts.infrastructure",
+    "hinglish.transcripts.interface",
+    "hinglish.linguistics.domain",
+    "hinglish.linguistics.application",
+    "hinglish.linguistics.infrastructure",
+    "hinglish.linguistics.interface",
+    "hinglish.usage.domain",
+    "hinglish.usage.application",
+    "hinglish.usage.infrastructure",
+    "hinglish.usage.interface",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "usage uses other contexts only via their api facade"
+type = "forbidden"
+source_modules = ["hinglish.usage"]
+forbidden_modules = [
+    "hinglish.transcription.domain",
+    "hinglish.transcription.application",
+    "hinglish.transcription.infrastructure",
+    "hinglish.transcription.interface",
+    "hinglish.transcripts.domain",
+    "hinglish.transcripts.application",
+    "hinglish.transcripts.infrastructure",
+    "hinglish.transcripts.interface",
+    "hinglish.linguistics.domain",
+    "hinglish.linguistics.application",
+    "hinglish.linguistics.infrastructure",
+    "hinglish.linguistics.interface",
+    "hinglish.speech.domain",
+    "hinglish.speech.application",
+    "hinglish.speech.infrastructure",
+    "hinglish.speech.interface",
+]
+allow_indirect_imports = true

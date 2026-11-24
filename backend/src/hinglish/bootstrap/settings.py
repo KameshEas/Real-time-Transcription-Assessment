@@ -26,8 +26,15 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:3000"])
     log_level: str = "INFO"
 
-    # Persistence
-    database_url: str = "postgresql+asyncpg://hinglish:hinglish@localhost:5432/hinglish"
+    # Persistence. `memory` keeps everything in process (tests, demos without a database).
+    persistence_backend: Literal["postgres", "memory"] = "postgres"
+    database_url: SecretStr | None = None  # any postgres:// URL; Supabase/Neon strings work as pasted
+    database_schema: str | None = None  # optional search_path (integration tests use a throwaway schema)
+
+    # Supabase: project URL and a private Storage bucket for generated files (exports). No audio is stored.
+    supabase_url: str | None = None
+    supabase_storage_bucket: str = "transcript-exports"
+    supabase_service_role_key: SecretStr | None = None
 
     # Adapter backends (Stage 0 = memory; Stage 1+ = redis)
     queue_backend: Literal["memory", "redis"] = "memory"

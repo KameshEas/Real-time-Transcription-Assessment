@@ -28,18 +28,48 @@ export type ErrorCode =
   | "ENGINE_QUOTA"
   | "ENGINE_CONFIG"
   | "ENGINE_IDLE_TIMEOUT"
-  | "ENGINE_ERROR";
+  | "ENGINE_ERROR"
+  | "STORAGE_UNAVAILABLE"
+  | "SAVE_FAILED";
 
 export type DoneReason = "stopped" | "limit" | "engine_closed" | "error" | "idle";
 
 export type ServerMessage =
-  | { v: 1; type: "ready"; session_id: string; engine: string; script: ScriptMode; max_duration_s: number }
+  | {
+      v: 1;
+      type: "ready";
+      session_id: string;
+      /** The transcript every final is saved into; send it back as `resume_transcript_id` after a drop. */
+      transcript_id: string;
+      resumed: boolean;
+      last_seq: number;
+      engine: string;
+      script: ScriptMode;
+      max_duration_s: number;
+    }
   | { v: 1; type: "partial"; utterance: number; text: string }
-  | { v: 1; type: "final"; seq: number; utterance: number; text: string; language: string | null }
+  | {
+      v: 1;
+      type: "final";
+      seq: number;
+      utterance: number;
+      text: string;
+      language: string | null;
+      /** False when the database write failed; the text is still shown. */
+      saved: boolean;
+    }
   | { v: 1; type: "latency"; first_partial_ms: number }
   | { v: 1; type: "limit"; reason: "max_duration"; max_duration_s: number }
   | { v: 1; type: "error"; code: ErrorCode; message: string; fatal: boolean; retryable: boolean }
-  | { v: 1; type: "done"; reason: DoneReason; segments: number; duration_ms: number; dropped_partials: number }
+  | {
+      v: 1;
+      type: "done";
+      reason: DoneReason;
+      transcript_id: string;
+      segments: number;
+      duration_ms: number;
+      dropped_partials: number;
+    }
   | { v: 1; type: "pong" };
 
 export function parseServerMessage(raw: string): ServerMessage | null {

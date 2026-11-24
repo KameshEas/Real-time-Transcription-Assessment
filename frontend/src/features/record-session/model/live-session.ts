@@ -19,14 +19,14 @@ export interface Failure {
 
 export type LiveSessionEvent =
   | { type: "MIC_READY" }
-  | { type: "READY"; sessionId: string; maxDurationS: number }
+  | { type: "READY"; sessionId: string; transcriptId: string; resumed: boolean; maxDurationS: number }
   | { type: "PARTIAL"; text: string }
-  | { type: "FINAL"; text: string; language: string | null }
+  | { type: "FINAL"; seq: number; text: string; language: string | null; saved: boolean }
   | { type: "LATENCY"; ms: number }
   | { type: "LEVEL"; rms: number }
   | { type: "LIMIT"; maxDurationS: number }
   | { type: "RECONNECTING"; attempt: number }
-  | { type: "DONE"; reason: DoneReason }
+  | { type: "DONE"; reason: DoneReason; transcriptId: string | null }
   | { type: "FAILED"; failure: Failure };
 
 export interface LiveSessionInput {
@@ -46,6 +46,7 @@ export const liveSession = fromCallback<{ type: "STOP" }, LiveSessionInput, Live
     let attempts = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let mic: MicCapture | null = null;
+    let transcriptId: string | null = null;
     let socket: TranscribeSocket | null = null;
 
     const fail = (failure: Failure) => {
@@ -61,13 +62,20 @@ export const liveSession = fromCallback<{ type: "STOP" }, LiveSessionInput, Live
             case "ready":
               everReady = true;
               attempts = 0;
-              sendBack({ type: "READY", sessionId: msg.session_id, maxDurationS: msg.max_duration_s });
+              transcriptId = msg.transcript_id;
+              sendBack({
+                type: "READY",
+                sessionId: msg.session_id,
+                transcriptId: msg.transcript_id,
+                resumed: msg.resumed,
+                maxDurationS: msg.max_duration_s,
+              });
               break;
             case "partial":
               sendBack({ type: "PARTIAL", text: msg.text });
               break;
             case "final":
-              sendBack({ type: "FINAL", text: msg.text, language: msg.language });
+              sendBack({ type: "FINAL", seq: msg.seq, text: msg.text, language: msg.language, saved: msg.saved });
               break;
             case "latency":
               sendBack({ type: "LATENCY", ms: msg.first_partial_ms });
@@ -83,14 +91,14 @@ export const liveSession = fromCallback<{ type: "STOP" }, LiveSessionInput, Live
               }
               break;
             case "done":
-              if (!failed) sendBack({ type: "DONE", reason: msg.reason });
+              if (!failed) sendBack({ type: "DONE", reason: msg.reason, transcriptId: msg.transcript_id });
               break;
           }
         },
         onClose({ expected }) {
           if (disposed || expected || failed) return;
           if (stopping) {
-            sendBack({ type: "DONE", reason: "stopped" });
+            sendBack({ type: "DONE", reason: "stopped", transcriptId });
           } else if (!everReady) {
             fail({ code: "CONNECTION_FAILED", message: "Can't reach the transcription server.", retryable: true });
           } else if (attempts < MAX_RECONNECTS) {
@@ -102,7 +110,14 @@ export const liveSession = fromCallback<{ type: "STOP" }, LiveSessionInput, Live
           }
         },
       });
-      socket.open({ v: 1, type: "start", engine: input.engine, script: input.script });
+      // After a drop, resume the same transcript so numbering continues (FR-1.6).
+      socket.open({
+        v: 1,
+        type: "start",
+        engine: input.engine,
+        script: input.script,
+        ...(transcriptId ? { resume_transcript_id: transcriptId } : {}),
+      });
     };
 
     void (async () => {
@@ -130,7 +145,7 @@ export const liveSession = fromCallback<{ type: "STOP" }, LiveSessionInput, Live
       if (!socket?.isOpen) {
         // Mid-reconnect: nothing to finalize server-side.
         clearTimeout(retryTimer);
-        sendBack({ type: "DONE", reason: "stopped" });
+        sendBack({ type: "DONE", reason: "stopped", transcriptId });
         return;
       }
       // Flush the last audio frame first, then ask the server to finalize.

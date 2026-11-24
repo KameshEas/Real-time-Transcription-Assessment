@@ -22,6 +22,8 @@ export interface RecorderContext {
   firstPartialMs: number | null;
   startedAt: number | null;
   maxDurationS: number | null;
+  /** The saved transcript this recording writes into (kept across reconnects). */
+  transcriptId: string | null;
   reconnectAttempt: number;
   doneReason: DoneReason | null;
   failure: Failure | null;
@@ -42,6 +44,7 @@ const fresh = {
   firstPartialMs: null,
   startedAt: null,
   maxDurationS: null,
+  transcriptId: null,
   reconnectAttempt: 0,
   doneReason: null,
   failure: null,
@@ -95,14 +98,27 @@ export const recorderMachine = setup({
           actions: assign({
             segments: ({ context, event }) => [
               ...context.segments,
-              { key: context.segments.length, text: event.text, language: event.language },
+              {
+                key: context.segments.length,
+                text: event.text,
+                language: event.language,
+                seq: event.saved ? event.seq : null,
+              },
             ],
             partial: "",
           }),
         },
         LATENCY: { actions: assign({ firstPartialMs: ({ context, event }) => context.firstPartialMs ?? event.ms }) },
         LEVEL: { actions: assign({ level: ({ event }) => event.rms }) },
-        DONE: { target: "done", actions: assign({ doneReason: ({ event }) => event.reason, partial: "", level: 0 }) },
+        DONE: {
+          target: "done",
+          actions: assign({
+            doneReason: ({ event }) => event.reason,
+            transcriptId: ({ context, event }) => event.transcriptId ?? context.transcriptId,
+            partial: "",
+            level: 0,
+          }),
+        },
         FAILED: { target: "error", actions: assign({ failure: ({ event }) => event.failure, level: 0 }) },
       },
       states: {
@@ -116,6 +132,7 @@ export const recorderMachine = setup({
               actions: assign({
                 startedAt: ({ context }) => context.startedAt ?? Date.now(),
                 maxDurationS: ({ event }) => event.maxDurationS,
+                transcriptId: ({ event }) => event.transcriptId,
               }),
             },
             STOP: "#recorder.idle",

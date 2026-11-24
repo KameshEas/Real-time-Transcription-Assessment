@@ -132,6 +132,11 @@ export function RecorderPanel() {
               {ctx.segments.map((seg) => (
                 <p key={seg.key} lang={segmentLang(seg.text, seg.language)}>
                   {seg.text}
+                  {seg.seq === null && (
+                    <span lang="en" className="ml-2 rounded bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive">
+                      not saved
+                    </span>
+                  )}
                 </p>
               ))}
             </div>
@@ -150,8 +155,14 @@ export function RecorderPanel() {
         )}
       </div>
 
+      {state.matches("done") && ctx.transcriptId && ctx.segments.length > 0 && (
+        <p className="text-sm text-muted-foreground" role="status">
+          Saved {ctx.segments.filter((s) => s.seq !== null).length} of {ctx.segments.length} sentences to History.
+        </p>
+      )}
+
       <p className="text-xs text-muted-foreground">
-        Your audio is streamed to Sarvam AI for transcription and is never stored.
+        Your audio is streamed to Sarvam AI for transcription and is never stored. Only the text is saved.
       </p>
     </section>
   );

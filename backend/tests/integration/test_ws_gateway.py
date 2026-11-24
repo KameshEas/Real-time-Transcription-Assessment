@@ -117,3 +117,64 @@ def test_idle_timeout_ends_session(client):
         msgs = until(ws, "done")
         assert types(msgs) == ["error", "done"]
         assert (msgs[0]["code"], msgs[-1]["reason"]) == ("IDLE_TIMEOUT", "idle")
+
+
+# --- persistence (FR-2) and resume (FR-1.6) -------------------------------------------------------
+
+
+def record(client, frames: int, start: dict | None = None) -> tuple[dict, list[dict]]:
+    with client.websocket_connect(URL) as ws:
+        ws.send_json(start or START)
+        ready = ws.receive_json()
+        for _ in range(frames):
+            ws.send_bytes(FRAME)
+        seen = until(ws, "final") if frames >= 15 else []
+        ws.send_json(STOP)
+        return ready, seen + until(ws, "done")
+
+
+def test_finals_are_saved_before_they_are_shown(client):
+    ready, msgs = record(client, 20)  # one full utterance + one pending, finalized by stop
+    finals = [m for m in msgs if m["type"] == "final"]
+    done = msgs[-1]
+    assert ready["transcript_id"] == done["transcript_id"] and ready["resumed"] is False
+    assert all(f["saved"] for f in finals)
+
+    t = client.get(f"/api/v1/transcripts/{ready['transcript_id']}").json()
+    assert [s["seq"] for s in t["segments"]] == [1, 2]
+    assert [s["text"] for s in t["segments"]] == [
+        "aaj ki meeting mein hum budget discuss karenge",
+        "aaj ki meeting",
+    ]
+    assert (t["status"], t["engine"], t["title"]) == (
+        "completed",
+        "fake",
+        "aaj ki meeting mein hum budget discuss karenge",
+    )
+    assert t["duration_ms"] is not None and t["hindi_ratio"] is not None
+
+
+def test_resume_continues_numbering_in_the_same_transcript(client):
+    first, _ = record(client, 15)
+    resumed, msgs = record(client, 15, {**START, "resume_transcript_id": first["transcript_id"]})
+    assert (resumed["transcript_id"], resumed["resumed"], resumed["last_seq"]) == (
+        first["transcript_id"],
+        True,
+        1,
+    )
+    assert [m["seq"] for m in msgs if m["type"] == "final"] == [2]
+    t = client.get(f"/api/v1/transcripts/{first['transcript_id']}").json()
+    assert [s["seq"] for s in t["segments"]] == [1, 2] and t["status"] == "completed"
+
+
+def test_resume_of_unknown_transcript_starts_a_new_one(client):
+    ready, _ = record(client, 0, {**START, "resume_transcript_id": "6f1f0d55-34bb-4c8e-9b65-9d0f3c0f2a11"})
+    assert ready["resumed"] is False
+    assert client.get(f"/api/v1/transcripts/{ready['transcript_id']}").status_code == 200
+
+
+def test_empty_recording_is_still_listed_as_completed(client):
+    ready, msgs = record(client, 0)
+    assert msgs[-1]["segments"] == 0
+    item = client.get("/api/v1/transcripts").json()["items"][0]
+    assert (item["id"], item["status"], item["title"]) == (ready["transcript_id"], "completed", "Untitled")

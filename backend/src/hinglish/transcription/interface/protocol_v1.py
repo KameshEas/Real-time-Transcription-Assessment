@@ -8,6 +8,7 @@ Server -> client: ready, partial, final, latency, limit, error, done, pong
 from __future__ import annotations
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -28,7 +29,7 @@ class StartMsg(_Msg):
     type: Literal["start"]
     engine: str = "sarvam"
     script: ScriptMode = "mixed"
-    resume_transcript_id: str | None = None
+    resume_transcript_id: UUID | None = None
     passcode: str | None = None
 
 
@@ -50,6 +51,9 @@ client_msg_adapter: TypeAdapter[StartMsg | StopMsg | PingMsg] = TypeAdapter(Clie
 class ReadyMsg(_Msg):
     type: Literal["ready"] = "ready"
     session_id: str
+    transcript_id: str
+    resumed: bool = False
+    last_seq: int = 0  # a resumed transcript continues numbering after this
     engine: str
     script: ScriptMode
     max_duration_s: float
@@ -67,6 +71,7 @@ class FinalMsg(_Msg):
     utterance: int
     text: str
     language: str | None = None
+    saved: bool = True  # False if the database write failed; the text is still shown
 
 
 class LatencyMsg(_Msg):
@@ -93,6 +98,8 @@ ErrorCode = Literal[
     "ENGINE_CONFIG",
     "ENGINE_IDLE_TIMEOUT",
     "ENGINE_ERROR",
+    "STORAGE_UNAVAILABLE",
+    "SAVE_FAILED",
 ]
 
 
@@ -107,6 +114,7 @@ class ErrorMsg(_Msg):
 class DoneMsg(_Msg):
     type: Literal["done"] = "done"
     reason: Literal["stopped", "limit", "engine_closed", "error", "idle"]
+    transcript_id: str
     segments: int
     duration_ms: int
     dropped_partials: int

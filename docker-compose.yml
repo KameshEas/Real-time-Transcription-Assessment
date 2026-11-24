@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: hinglish
       POSTGRES_PASSWORD: hinglish
       POSTGRES_DB: hinglish
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]  # 5433 on the host: 5432 is often taken by a local Postgres
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hinglish"]
@@ -18,7 +18,8 @@ services:
     build: ./backend
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://hinglish:hinglish@postgres:5432/hinglish
+      PERSISTENCE_BACKEND: postgres
+      DATABASE_URL: postgresql://hinglish:hinglish@postgres:5432/hinglish
       APP_ROLES: api,gateway,worker
       CORS_ORIGINS: http://localhost:3000
     ports: ["8000:8000"]
@@ -43,7 +44,9 @@ services:
     command: ["python", "-m", "hinglish.worker"]
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://hinglish:hinglish@postgres:5432/hinglish
+      PERSISTENCE_BACKEND: postgres
+      DATABASE_URL: postgresql://hinglish:hinglish@postgres:5432/hinglish
+      RUN_MIGRATIONS: "false"
       APP_ROLES: worker
       QUEUE_BACKEND: redis
       REDIS_URL: redis://redis:6379/0

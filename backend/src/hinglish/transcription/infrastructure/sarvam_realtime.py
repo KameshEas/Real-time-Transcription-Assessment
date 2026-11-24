@@ -141,6 +141,7 @@ class SarvamRealtimeRecognizer:
         self._client = AsyncSarvamAI(api_subscription_key=api_key)
         self._model = model
         self._stream_type = stream_type
+        self.model = model  # recorded on transcripts as model_id
 
     async def open(self, config: RecognizerConfig) -> SarvamRealtimeSession:
         stack = AsyncExitStack()

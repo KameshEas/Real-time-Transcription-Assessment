@@ -15,13 +15,13 @@ import contextlib
 import time
 from collections.abc import Mapping
 from typing import Literal, cast, get_args
-from uuid import uuid4
 
 import structlog
 from fastapi import APIRouter, WebSocket
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
+from hinglish.transcription.application.live_transcription import LiveHandle, LiveTranscription
 from hinglish.transcription.application.outbound_buffer import Outbound, OutboundBuffer
 from hinglish.transcription.application.ports.speech_recognizer import (
     RecognizerConfig,
@@ -69,25 +69,32 @@ async def transcribe(ws: WebSocket) -> None:
         await ws.close(code=1008, reason="origin not allowed")
         return
     await ws.accept()
-    await LiveConnection(ws, state.recognizers, state.session_policy).run()
+    await LiveConnection(ws, state.recognizers, state.session_policy, state.live_transcription).run()
 
 
 class LiveConnection:
     def __init__(
-        self, ws: WebSocket, recognizers: Mapping[str, SpeechRecognizer], policy: SessionPolicy
+        self,
+        ws: WebSocket,
+        recognizers: Mapping[str, SpeechRecognizer],
+        policy: SessionPolicy,
+        live: LiveTranscription,
     ) -> None:
         self.ws = ws
         self.recognizers = recognizers
         self.policy = policy
+        self.live = live
+        self.handle: LiveHandle | None = None
         self.out = OutboundBuffer(capacity=64)
-        self.session_id = str(uuid4())
-        self.log = log.bind(session_id=self.session_id)
+        self.log = log
         self.started_at = 0.0
         self.first_audio_at: float | None = None
-        self.first_partial_sent = False
+        self.first_partial_ms: int | None = None
         self.segments = 0
+        self.last_seq = 0
         self.client_gone = False
         self.engine_error = False
+        self.close_reason = "stopped"
 
     # --- lifecycle ------------------------------------------------------------------------------
 
@@ -109,12 +116,30 @@ class LiveConnection:
                 as_error_code(exc.code), "Transcription service unavailable.", retryable=exc.retryable
             )
             return
+        try:
+            handle = await self.live.start(
+                engine=start.engine,
+                script=start.script,
+                model_id=getattr(recognizer, "model", None),
+                resume_transcript_id=start.resume_transcript_id,
+            )
+        except Exception:
+            log.exception("live.storage_unavailable")
+            await session.abort()
+            await self._fail("STORAGE_UNAVAILABLE", "Can't save transcripts right now.", retryable=True)
+            return
+        self.handle = handle
+        self.last_seq = handle.last_seq
+        self.log = log.bind(session_id=str(handle.session_id), transcript_id=str(handle.transcript_id))
 
         self.started_at = time.monotonic()
-        self.log.info("live.started", engine=start.engine, script=start.script)
+        self.log.info("live.started", engine=start.engine, script=start.script, resumed=handle.resumed)
         self._send(
             ReadyMsg(
-                session_id=self.session_id,
+                session_id=str(handle.session_id),
+                transcript_id=str(handle.transcript_id),
+                resumed=handle.resumed,
+                last_seq=handle.last_seq,
                 engine=start.engine,
                 script=start.script,
                 max_duration_s=self.policy.max_duration_s,
@@ -132,10 +157,20 @@ class LiveConnection:
                 task.cancel()
             await session.abort()
 
+        try:
+            await self.live.finish(
+                handle,
+                reason=self.close_reason if reason == "stopped" else reason,
+                first_partial_ms=self.first_partial_ms,
+            )
+        except Exception:
+            self.log.exception("live.finish_failed")
+
         if not self.client_gone:
             self._send(
                 DoneMsg(
                     reason=reason,
+                    transcript_id=str(handle.transcript_id),
                     segments=self.segments,
                     duration_ms=int((time.monotonic() - self.started_at) * 1000),
                     dropped_partials=self.out.dropped,
@@ -155,6 +190,7 @@ class LiveConnection:
         ended = uplink.result()
         if ended == "disconnect":
             self.client_gone = True
+            self.close_reason = "disconnect"
             return "stopped"
         # Graceful: let the engine finalize the pending utterance, then drain its events.
         await session.close()
@@ -235,9 +271,9 @@ class LiveConnection:
             if event.kind == "partial":
                 if not event.text:
                     continue
-                if not self.first_partial_sent and self.first_audio_at is not None:
-                    self.first_partial_sent = True
+                if self.first_partial_ms is None and self.first_audio_at is not None:
                     ms = int((time.monotonic() - self.first_audio_at) * 1000)
+                    self.first_partial_ms = ms
                     self._send(LatencyMsg(first_partial_ms=ms))
                     self.log.info("live.first_partial", ms=ms)
                 self.out.put(
@@ -246,12 +282,7 @@ class LiveConnection:
             elif event.kind == "final":
                 if not event.text.strip():
                     continue
-                self.segments += 1
-                self._send(
-                    FinalMsg(
-                        seq=self.segments, utterance=event.utterance, text=event.text, language=event.language
-                    )
-                )
+                await self._final(event.text, event.utterance, event.language)
             else:
                 self._send(
                     ErrorMsg(
@@ -264,6 +295,21 @@ class LiveConnection:
                 if event.fatal:
                     self.engine_error = True
                     return
+
+    async def _final(self, text: str, utterance: int, language: str | None) -> None:
+        """Save first, then show: a final the user sees is already in the database (FR-2)."""
+        assert self.handle is not None
+        saved = True
+        try:
+            seg = await self.live.record_final(self.handle, text=text, language=language)
+            seq = seg.seq
+        except Exception:
+            self.log.exception("live.save_failed")
+            saved, seq = False, self.last_seq + 1
+            self._send(ErrorMsg(code="SAVE_FAILED", message="A sentence couldn't be saved.", fatal=False))
+        self.last_seq = seq
+        self.segments += 1
+        self._send(FinalMsg(seq=seq, utterance=utterance, text=text, language=language, saved=saved))
 
     async def _writer(self) -> None:
         while (item := await self.out.get()) is not None:

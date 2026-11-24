@@ -8,6 +8,16 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: backend } }
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: ci, POSTGRES_PASSWORD: ci, POSTGRES_DB: ci }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # API and gateway tests run twice: in-memory and against this Postgres (migrated throwaway schema).
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -18,6 +28,9 @@ jobs:
       - run: uv run mypy
       - run: uv run lint-imports
       - run: uv run pytest -q
+      - name: Migration round-trip
+        env: { DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci" }
+        run: uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
 
   frontend:
     runs-on: ubuntu-latest
