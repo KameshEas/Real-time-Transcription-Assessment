@@ -1,0 +1,111 @@
+[project]
+name = "hinglish"
+version = "0.1.0"
+description = "Hinglish Live Transcribe: real-time code-mixed speech-to-text backend"
+readme = "README.md"
+authors = [
+    { name = "Kamesh A S", email = "kamesheas@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.165.0",
+    "groq>=1.7.0",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.16.3",
+    "sarvamai>=0.1.49",
+    "sqlalchemy[asyncio]>=2.1.9",
+    "structlog>=26.1.0",
+    "tenacity>=9.2.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.17",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "ruff>=0.17.6",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["hinglish"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["src"]
+
+# Clean Architecture dependency rule, enforced in CI (ARCHITECTURE.md §6).
+[tool.importlinter]
+root_package = "hinglish"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: interface -> application -> domain (per context)"
+type = "layers"
+layers = ["interface", "infrastructure", "application", "domain"]
+containers = [
+    "hinglish.transcription",
+    "hinglish.transcripts",
+    "hinglish.linguistics",
+    "hinglish.speech",
+    "hinglish.usage",
+]
+exhaustive = false
+
+[[tool.importlinter.contracts]]
+name = "Domain and shared kernel use only the standard library"
+type = "forbidden"
+source_modules = [
+    "hinglish.shared_kernel",
+    "hinglish.transcription.domain",
+    "hinglish.transcripts.domain",
+    "hinglish.linguistics.domain",
+    "hinglish.speech.domain",
+    "hinglish.usage.domain",
+]
+forbidden_modules = ["fastapi", "pydantic", "sqlalchemy", "sarvamai", "groq", "redis", "httpx", "structlog"]
+
+[[tool.importlinter.contracts]]
+name = "Application layer has no framework or SDK imports"
+type = "forbidden"
+source_modules = [
+    "hinglish.transcription.application",
+    "hinglish.transcripts.application",
+    "hinglish.linguistics.application",
+    "hinglish.speech.application",
+    "hinglish.usage.application",
+]
+forbidden_modules = ["fastapi", "sqlalchemy", "sarvamai", "groq", "redis", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "Only the composition root knows concrete adapters"
+type = "forbidden"
+source_modules = [
+    "hinglish.transcription.application",
+    "hinglish.transcripts.application",
+    "hinglish.linguistics.application",
+    "hinglish.speech.application",
+    "hinglish.usage.application",
+]
+forbidden_modules = ["hinglish.bootstrap"]

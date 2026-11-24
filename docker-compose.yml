@@ -1,0 +1,55 @@
+# Stage 0: one backend container runs api + gateway + worker. No AI runs in any container.
+# `docker compose --profile scale up` adds Redis and a separate worker (Stage 1 topology).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: hinglish
+      POSTGRES_PASSWORD: hinglish
+      POSTGRES_DB: hinglish
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hinglish"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hinglish:hinglish@postgres:5432/hinglish
+      APP_ROLES: api,gateway,worker
+      CORS_ORIGINS: http://localhost:3000
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  frontend:
+    build:
+      context: ./frontend
+      args: { NEXT_PUBLIC_API_URL: "http://localhost:8000" }
+    ports: ["3000:3000"]
+    depends_on: [backend]
+
+  redis:
+    image: redis:8-alpine
+    profiles: [scale]
+    ports: ["6379:6379"]
+
+  worker:
+    build: ./backend
+    profiles: [scale]
+    command: ["python", "-m", "hinglish.worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hinglish:hinglish@postgres:5432/hinglish
+      APP_ROLES: worker
+      QUEUE_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+
+volumes:
+  pgdata:
