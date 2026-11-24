@@ -4,7 +4,8 @@ def test_live(client):
     assert r.json() == {"status": "ok"}
 
 
-def test_ready_reports_roles_and_vendors(client):
+def test_ready_reports_roles_engines_and_vendors(client):
     body = client.get("/api/v1/health/ready").json()
     assert body["roles"] == ["api", "gateway", "worker"]
+    assert body["engines"] == ["fake"]
     assert body["vendors"] == {"sarvam": False, "groq": False}

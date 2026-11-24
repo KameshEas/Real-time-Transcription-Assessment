@@ -5,6 +5,7 @@ import { apiFetch } from "./client";
 export interface Readiness {
   status: string;
   roles: string[];
+  engines: string[];
   vendors: Record<string, boolean>;
 }
 

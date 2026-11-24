@@ -16,6 +16,7 @@ async def ready(request: Request) -> dict[str, object]:
     return {
         "status": "ok",
         "roles": s.app_roles,
+        "engines": sorted(getattr(request.app.state, "recognizers", {})),
         "vendors": {
             "sarvam": s.sarvam_api_key is not None,
             "groq": s.groq_api_key is not None,

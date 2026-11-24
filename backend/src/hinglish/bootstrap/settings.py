@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # AI vendors (API-only; no models hosted here)
     sarvam_api_key: SecretStr | None = None
     sarvam_stt_model: str = "saaras:v4"
+    sarvam_stream_type: Literal["fast", "balanced"] = "fast"  # spike: fast ~0.75 s first partial
     sarvam_tts_model: str = "bulbul:v4-flash"
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-20b"

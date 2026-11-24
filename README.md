@@ -37,6 +37,31 @@ cd frontend && npm install && npm run dev                              # http://
 | Frontend types / build | `npm run typecheck && npm run build` |
 | Regenerate API types | `npm run gen:api` (backend must be running) |
 
+## Live transcription
+
+Open http://localhost:3000/record, pick an output script and press **Start recording**.
+
+```
+browser mic ─► AudioWorklet (native rate → 16 kHz PCM16, 100 ms frames)
+            ─► WS /ws/v1/transcribe (protocol v1) ─► Sarvam saaras:v4 realtime
+            ◄─ partial / final / latency / limit / error / done
+```
+
+| Script | Sarvam `mode` | Final output example |
+|---|---|---|
+| Mixed | `codemix` | आज की meeting में हम next quarter का budget discuss करेंगे |
+| Devanagari | `transcribe` | आज की मीटिंग में हम नेक्स्ट क्वार्टर का बजट डिस्कस करेंगे |
+| Roman | `translit` | Aaj ki meeting mein hum next quarter ka budget discuss karenge |
+
+Measured on Sarvam with `stream_type=fast`: first partial about 0.5–1.0 s after speech starts; the engine handshake
+adds about 2 s before `ready`, and the browser buffers up to 5 s of audio meanwhile so no words are lost.
+
+Protocol v1 (all JSON carries `"v": 1`; audio is binary):
+- client → server: `start {engine, script}`, PCM16 frames, `stop`, `ping`
+- server → client: `ready`, `partial`, `final {seq, text, language}`, `latency`, `limit`, `error {code, fatal, retryable}`, `done`, `pong`
+
+Without a Sarvam key (or in tests), the `fake` engine returns a scripted transcript so the full flow still runs.
+
 ## Scaling topology
 
 `docker compose --profile scale up` adds Redis and a separate worker container (`APP_ROLES=worker`) to show the Stage 1 setup.

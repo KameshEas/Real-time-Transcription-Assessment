@@ -12,6 +12,7 @@ from hinglish.bootstrap.container import build_container
 from hinglish.bootstrap.settings import Settings, get_settings
 from hinglish.observability.health import router as health_router
 from hinglish.observability.logging import configure_logging
+from hinglish.transcription.interface.ws_gateway import router as gateway_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -20,7 +21,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.container = build_container(settings)
+        container = build_container(settings)
+        app.state.container = container
+        # Interface adapters read only what they need, never the container type itself.
+        app.state.recognizers = container.recognizers
+        app.state.session_policy = container.session_policy
         yield
 
     app = FastAPI(
@@ -39,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["ETag"],
     )
     app.include_router(health_router, prefix="/api/v1")
-    # Role-gated routers are added here as contexts are built:
-    #   "api"     -> transcripts, speech REST
-    #   "gateway" -> /ws/v1/transcribe
+    if "gateway" in settings.app_roles:
+        app.include_router(gateway_router)
+    # "api" role -> transcripts and speech REST routers (Day 2+).
     return app
